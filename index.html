@@ -513,38 +513,77 @@ const FIREBASE_URL = "https://undangan-tahlil-sanita-default-rtdb.asia-southeast
 const EVENT_DATE = new Date("2026-07-26T16:00:00+07:00").getTime();
 
 /* ---------------- LOADING SCREEN ---------------- */
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    const ls = document.getElementById('loading-screen');
-    ls.style.opacity = '0';
-    ls.style.visibility = 'hidden';
-  }, 1200);
-  AOS.init({ duration: 900, once: true, easing: 'ease-out-cubic' });
+let loadingHidden = false;
+function hideLoadingScreen(){
+  if (loadingHidden) return;
+  loadingHidden = true;
+  const ls = document.getElementById('loading-screen');
+  if (!ls) return;
+  ls.style.pointerEvents = 'none'; // klik langsung tembus meski masih fade
+  ls.style.opacity = '0';
+  setTimeout(() => { ls.style.visibility = 'hidden'; }, 1000);
+}
+function initAOSSafe(){
+  try{
+    if (typeof AOS !== 'undefined') {
+      AOS.init({ duration: 900, once: true, easing: 'ease-out-cubic' });
+    }
+  }catch(e){ console.warn('AOS gagal dimuat, animasi scroll dilewati.', e); }
+}
+
+// Coba tampilkan konten secepat mungkin setelah DOM siap (tidak menunggu semua CDN)
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(hideLoadingScreen, 900);
+  initAOSSafe();
 });
+// Jaring pengaman: paksa hilang maksimal 3.5 detik apa pun yang terjadi
+setTimeout(hideLoadingScreen, 3500);
+// Jika semua resource berhasil dimuat lebih dulu, tetap coba init AOS
+window.addEventListener('load', initAOSSafe);
 
 /* ---------------- COVER OPEN ---------------- */
 document.getElementById('open-invitation').addEventListener('click', () => {
   const cover = document.getElementById('cover');
   const main = document.getElementById('main-content');
+
+  // Sampul selalu memudar & tidak menghalangi klik, apa pun yang terjadi di bawah
+  cover.style.pointerEvents = 'none';
   cover.style.transform = 'scale(1.08)';
   cover.style.opacity = '0';
   setTimeout(() => { cover.style.visibility = 'hidden'; }, 1100);
-  gsap.to(main, { opacity: 1, duration: 1.4, ease: 'power2.out' });
-  gsap.from('#hero .section-inner', { y: 40, opacity: 0, duration: 1.2, delay: .3, ease: 'power3.out' });
 
-  const audio = document.getElementById('bg-audio');
-  if (audio.src) {
-    audio.volume = 0.35;
-    audio.play().catch(()=>{});
-    document.getElementById('music-icon').className = 'fa-solid fa-pause';
-    document.getElementById('music-toggle').innerHTML = '<div class="eq"><span></span><span></span><span></span></div>';
+  // Konten utama selalu ditampilkan, pakai GSAP jika tersedia, kalau tidak pakai CSS biasa
+  main.style.transition = 'opacity 1.2s ease';
+  main.style.opacity = '1';
+  try{
+    if (typeof gsap !== 'undefined') {
+      gsap.to(main, { opacity: 1, duration: 1.4, ease: 'power2.out' });
+      gsap.from('#hero .section-inner', { y: 40, opacity: 0, duration: 1.2, delay: .3, ease: 'power3.out' });
+    }
+  }catch(e){ console.warn('GSAP gagal dimuat, memakai transisi CSS biasa.', e); }
+
+  // Musik latar: hanya diputar jika file audio sudah diisi oleh pengguna
+  const audioEl = document.getElementById('bg-audio');
+  const hasSource = audioEl.querySelector('source') && audioEl.querySelector('source').getAttribute('src');
+  if (hasSource) {
+    audioEl.volume = 0.35;
+    audioEl.play().then(() => {
+      document.getElementById('music-toggle').innerHTML = '<div class="eq"><span></span><span></span><span></span></div>';
+    }).catch((err) => {
+      console.warn('Autoplay musik diblokir browser, tekan tombol musik manual.', err);
+    });
   }
 });
 
 /* ---------------- MUSIC TOGGLE ---------------- */
 const audio = document.getElementById('bg-audio');
 document.getElementById('music-toggle').addEventListener('click', () => {
-  if (!audio.src) return;
+  const sourceEl = audio.querySelector('source');
+  const hasSource = sourceEl && sourceEl.getAttribute('src');
+  if (!hasSource) {
+    alert('Belum ada file musik yang dipasang. Tambahkan URL musik pada tag <source> di elemen #bg-audio.');
+    return;
+  }
   if (audio.paused) {
     audio.play();
     document.getElementById('music-toggle').innerHTML = '<div class="eq"><span></span><span></span><span></span></div>';
